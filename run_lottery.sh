@@ -17,6 +17,9 @@ legendaries_file="$script_home/tnl_legendaries.txt"
 eligible_nations_file="/mnt/nationstates/keepers/keepers_of_the_north.$today.txt"
 eligible_nations_file_backup="/mnt/nationstates/keepers/keepers_of_the_north.$yesterday.txt"
 
+excluded_nations_file="/mnt/nationstates/securitycouncil/securitycouncil.$today.txt"
+excluded_nations_file_backup="/mnt/nationstates/securitycouncil/securitycouncil.$yesterday.txt"
+
 x_autologin=$(cat ${data_home}/the_northern_light.cred.dat)
 user_agent=$(cat ${data_home}/useragent.dat)
 
@@ -62,10 +65,30 @@ run_lottery() {
   card_id=$(echo "$selected_line_text" | cut -d"|" -f1)
   season_id=$(echo "$selected_line_text" | cut -d"|" -f3)
 
-  total_eligible_count=$(wc -l < "$eligible_nations_file")
-  random_eligible_line=$((RANDOM % total_eligible_count + 1))
-  random_eligible_name=$(sed -n "${random_eligible_line}p" "$eligible_nations_file")
 
+  eligible_nations_filtered=$(mktemp)
+ 
+  if [[ -f "$excluded_nations_file" ]]; then
+    grep -vxFf "$excluded_nations_file" "$eligible_nations_file" > "$eligible_nations_filtered"
+  else
+    echo "Warning: No exclusion list found at $excluded_nations_file (or backup). Proceeding without exclusions."
+    cat "$eligible_nations_file" > "$eligible_nations_filtered"
+  fi
+ 
+  total_eligible_count=$(wc -l < "$eligible_nations_filtered")
+ 
+  if [[ "$total_eligible_count" -eq 0 ]]; then
+    echo "Error: No eligible nations remain after applying exclusions."
+    rm -f "$eligible_nations_filtered"
+    exit 1
+  fi
+
+#  total_eligible_count=$(wc -l < "$eligible_nations_file")
+#  random_eligible_line=$((RANDOM % total_eligible_count + 1))
+#  random_eligible_name=$(sed -n "${random_eligible_line}p" "$eligible_nations_file")
+
+random_eligible_line=$((RANDOM % total_eligible_count + 1))
+  random_eligible_name=$(sed -n "${random_eligible_line}p" "$eligible_nations_filtered")
 }
 
 
@@ -91,7 +114,7 @@ get_card_name() {
 
 
 print_debug_info() {
-
+ 
   echo "Lines in File: $total_lines"
   echo "Randomly selected line: Line $random_line"
   echo "Contents of Line $random_line: $selected_line_text"
@@ -99,11 +122,11 @@ print_debug_info() {
   echo "Season = $season_id"
   echo "Name of Card = $card_name"
   echo "----------------------------------------"
-  echo "Total Eligible: $total_eligible_count"
+  echo "Exclusion List Used: $excluded_nations_file"
+  echo "Total Eligible (after exclusions): $total_eligible_count"
   echo "Selected Eligible Line: $random_eligible_line"
   echo "Selected Eligible Name: $random_eligible_name"
 }
-
 
 
 deliver_card() {
@@ -199,6 +222,12 @@ if [ ! -f "$eligible_nations_file" ]; then
       echo "Failed to load eligiblity list." ; exit 1
    fi
 fi
+
+if [ ! -f "$excluded_nations_file" ]; then
+   excluded_nations_file="$excluded_nations_file_backup"
+fi
+
+
 
 download_deck
 run_lottery
